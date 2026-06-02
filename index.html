@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zolve EL Invoice Portal</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; letter-spacing: -0.015em; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #F9FAFB; }
+        ::-webkit-scrollbar-thumb { background: #E5E7EB; border-radius: 20px; }
+        .status-pending { background-color: #FEF3C7; color: #D97706; border: 1px solid #FCD34D; }
+        .status-approved { background-color: #D1FAE5; color: #059669; border: 1px solid #6EE7B7; }
+        .status-rejected { background-color: #FEE2E2; color: #DC2626; border: 1px solid #FCA5A5; }
+        .status-fully_approved { background-color: #DBEAFE; color: #2563EB; border: 1px solid #93C5FD; }
+        .status-paid { background-color: #F3F4F6; color: #374151; border: 1px solid #E5E7EB; }
+    </style>
+</head>
+<body class="bg-[#F8F9FA] text-[#111827] min-h-screen flex flex-col antialiased">
+
+    <div id="portalAuthGatewayLockbox" class="fixed inset-0 bg-[#F4F5F7] z-9999 flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-md border border-gray-200 rounded-2xl shadow-xl p-8 space-y-6">
+            <div class="text-center space-y-2">
+                <div class="inline-flex items-center justify-center bg-black text-white px-5 py-2.5 rounded-xl font-black text-2xl tracking-tighter">
+                    <span class="text-[#FF5722]">z</span>olve
+                </div>
+                <h2 class="text-base font-black tracking-tight text-gray-950 uppercase mt-4">EL Invoice Portal Login</h2>
+                <p class="text-xs text-gray-400 font-semibold uppercase tracking-wider">Authorized Enterprise Access Control Matrix</p>
+            </div>
+
+            <div id="authAlertBanner" class="hidden bg-red-50 text-red-600 border border-red-100 p-3 rounded-xl text-xs font-bold text-center"></div>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-[10px] font-extrabold uppercase tracking-wider text-gray-400 mb-1">Select System Identity</label>
+                    <select id="authSelectIdentity" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-bold outline-none cursor-pointer">
+                        <option value="Vikas">Vikas (Tier 1 Gateway)</option>
+                        <option value="Rithik">Rithik (Tier 2 Gateway)</option>
+                        <option value="Arun">Arun (Tier 3 Master Gateway Operator)</option>
+                        <option value="Darshan">Darshan (Disbursal Operations Desk)</option>
+                        <option value="Central">Central Partner Team (Master System Core)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-extrabold uppercase tracking-wider text-gray-400 mb-1">Security Access Password</label>
+                    <div class="relative flex items-center">
+                        <input id="authInputPassword" type="password" placeholder="••••••••" class="w-full bg-gray-50 border border-gray-200 rounded-xl pl-3 pr-10 py-2.5 text-xs font-bold outline-none focus:border-gray-900 transition">
+                        <button type="button" onclick="togglePasswordVisibilityText()" class="absolute right-3 text-gray-400 hover:text-gray-900 text-xs font-extrabold cursor-pointer select-none">
+                            <span id="passwordToggleText">Show</span>
+                        </button>
+                    </div>
+                </div>
+                <button onclick="processSystemIdentityAuthentication()" class="w-full bg-black hover:bg-gray-800 text-white font-extrabold text-xs uppercase py-3 rounded-xl transition tracking-wide cursor-pointer shadow-md">
+                    Verify Credentials & Initialize Desk
+                </button>
+            </div>
+        </div>
+    </div>
+
+
+    <div id="mainDashboardApplicationWrapper" class="hidden flex flex-col min-h-screen">
+        
+        <header class="bg-white border-b border-gray-200 px-8 py-4 flex flex-col xl:flex-row justify-between items-center gap-4 sticky top-0 z-40 shadow-xs">
+            <div class="flex items-center space-x-4">
+                <div class="flex items-center justify-center bg-black text-white px-4 py-2 rounded-xl font-black text-xl tracking-tighter shadow-xs">
+                    <span class="text-[#FF5722]">z</span>olve
+                </div>
+                <div class="h-8 w-[1px] bg-gray-200 hidden sm:block"></div>
+                <div>
+                    <h1 class="text-sm font-black tracking-tight text-gray-950 uppercase">Zolve EL Invoice Portal</h1>
+                    <p id="headerSystemIdentitySubContext" class="text-[11px] text-gray-400 font-semibold tracking-wide uppercase mt-0.5"></p>
+                </div>
+            </div>
+            
+            <div class="flex flex-wrap items-center gap-3 w-full xl:w-auto justify-end">
+                <div class="bg-gray-100 p-1 rounded-xl flex gap-1 border border-gray-200 text-xs">
+                    <button id="viewBtnTable" onclick="toggleViewSegment('table')" class="bg-white text-gray-950 px-3 py-1.5 rounded-lg font-bold shadow-2xs transition cursor-pointer">Main Ledger</button>
+                    <button id="viewBtnAnalytics" onclick="toggleViewSegment('analytics')" class="text-gray-500 hover:text-gray-900 px-3 py-1.5 rounded-lg font-bold transition cursor-pointer">📈 Portal Analytics</button>
+                </div>
+
+                <button onclick="exportFilteredInvoicesToExcel()" class="bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 font-extrabold text-xs px-3 py-2 rounded-xl flex items-center gap-1.5 transition cursor-pointer shadow-2xs data-table-control">
+                    📥 Export Excel
+                </button>
+
+                <div class="bg-gray-100 p-1 rounded-xl flex gap-1 border border-gray-200 text-xs data-table-control">
+                    <button id="tabPending" onclick="switchLifecycleTab('pending_all')" class="bg-white text-gray-950 px-3 py-1.5 rounded-lg font-bold shadow-2xs transition cursor-pointer">Pending</button>
+                    <button id="tabPaid" onclick="switchLifecycleTab('paid')" class="text-gray-500 hover:text-gray-900 px-3 py-1.5 rounded-lg font-bold transition cursor-pointer">Paid Archives</button>
+                </div>
+
+                <div class="bg-gray-100 p-1 rounded-xl flex gap-1 border border-gray-200 text-xs data-table-control">
+                    <button id="btnBatchAll" onclick="switchPayoutTimeframe('all')" class="bg-white text-gray-950 px-3 py-1.5 rounded-lg font-bold shadow-2xs transition cursor-pointer">All Dates</button>
+                    <button id="btnBatchThis" onclick="switchPayoutTimeframe('this_week')" class="text-gray-500 hover:text-gray-900 px-3 py-1.5 rounded-lg font-bold transition cursor-pointer">This Week</button>
+                    <button id="btnBatchNext" onclick="switchPayoutTimeframe('next_week')" class="text-gray-500 hover:text-gray-900 px-3 py-1.5 rounded-lg font-bold transition cursor-pointer">Next Week</button>
+                    <button id="btnBatchThird" onclick="switchPayoutTimeframe('third_week')" class="text-gray-500 hover:text-gray-900 px-3 py-1.5 rounded-lg font-bold transition cursor-pointer">3 Weeks Later</button>
+                </div>
+
+                <div class="flex items-center bg-white border border-gray-200 rounded-xl px-2 py-1 data-table-control">
+                    <input type="date" id="wednesdayBatchCalendar" onchange="applyCustomCalendarTargetDate()" class="text-xs font-bold text-gray-700 outline-none border-0 p-1 bg-white cursor-pointer">
+                </div>
+
+                <div id="darshanHeaderActions" class="hidden flex items-center gap-2 bg-purple-50 border border-purple-200 px-3 py-1.5 rounded-xl">
+                    <span class="text-[10px] font-black text-purple-800 uppercase tracking-wider">Darshan Desk:</span>
+                    <button onclick="executeDarshanBulkAction('paid')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[10px] uppercase px-2.5 py-1.5 rounded-lg transition cursor-pointer shadow-2xs">Mark Paid</button>
+                    <button onclick="executeDarshanBulkAction('revision')" class="bg-purple-700 hover:bg-purple-800 text-white font-extrabold text-[10px] uppercase px-2.5 py-1.5 rounded-lg transition cursor-pointer shadow-2xs">Suggest Revision</button>
+                </div>
+
+                <button onclick="executeSecureIdentitySessionLogout()" class="bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-extrabold text-xs px-4 py-2 rounded-xl transition cursor-pointer shadow-2xs">
+                    Sign Out
+                </button>
+            </div>
+        </header>
+
+        <main class="flex-1 w-full max-w-[1750px] mx-auto p-6">
+            
+            <div id="viewSegmentTable" class="space-y-6 animate-fade-in">
+                
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-5">
+                    <div class="bg-white border border-gray-200/80 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
+                        <div>
+                            <span class="text-[10px] font-extrabold uppercase tracking-wider text-gray-400 block">Total Pipeline Active Liability</span>
+                            <p id="statUnpaidVolume" class="text-2xl font-black text-gray-900 mt-1">₹0</p>
+                        </div>
+                        <div class="text-[10px] font-bold text-gray-400 mt-3 pt-2 border-t border-gray-100 flex items-center gap-1">
+                            <span class="text-amber-500">⚡</span> Capital locked in processing pipeline
+                        </div>
+                    </div>
+                    <div class="bg-white border border-gray-200/80 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
+                        <div>
+                            <span class="text-[10px] font-extrabold uppercase tracking-wider text-gray-400 block">Delinquent Overdue Items (15D+)</span>
+                            <p id="statOverdueCount" class="text-2xl font-black text-[#FF5722] mt-1">0 Overdue</p>
+                        </div>
+                        <div class="text-[10px] font-bold text-[#FF5722] mt-3 pt-2 border-t border-gray-100 flex items-center gap-1">
+                            <span>⚠️</span> Requires immediate attention / follow-up
+                        </div>
+                    </div>
+                    <div class="bg-white border border-gray-200/80 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
+                        <div>
+                            <span class="text-[10px] font-extrabold uppercase tracking-wider text-gray-400 block">Settled Funds Disbursed</span>
+                            <p id="statPaidVolume" class="text-2xl font-black text-emerald-600 mt-1">₹0</p>
+                        </div>
+                        <div class="text-[10px] font-bold text-emerald-600 mt-3 pt-2 border-t border-gray-100 flex items-center gap-1">
+                            <span>✓</span> Archive totals successfully cleared
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-xs flex flex-col overflow-hidden min-h-[550px]">
+                    
+                    <div class="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6 pb-4 border-b border-gray-100">
+                        <div>
+                            <h2 id="dashboardTitle" class="text-base font-extrabold text-gray-950 tracking-tight">Processing Dashboard</h2>
+                            <p id="subHeaderContext" class="text-xs text-gray-400 font-medium tracking-wide mt-0.5">Showing records matching access configuration gates</p>
+                        </div>
+                        
+                        <div id="bulkActionsConsole" class="hidden flex items-center gap-2 bg-orange-50 border border-orange-100 px-3 py-2 rounded-xl">
+                            <span id="bulkCountBadge" class="text-xs font-extrabold text-[#FF5722]">0 selected</span>
+                            <div class="h-4 w-[1px] bg-orange-200 mx-1"></div>
+                            <button onclick="executeBulkOperation('approved')" class="bg-gray-950 hover:bg-gray-800 text-white font-extrabold text-[10px] uppercase px-3 py-1.5 rounded-lg transition cursor-pointer">Bulk Approve</button>
+                            <button onclick="executeBulkOperation('rejected')" class="bg-red-600 hover:bg-red-700 text-white font-extrabold text-[10px] uppercase px-3 py-1.5 rounded-lg transition cursor-pointer">Bulk Reject</button>
+                        </div>
+
+                        <span id="counterBadge" class="bg-gray-50 text-gray-600 text-xs font-bold px-3 py-1 rounded-lg border border-gray-200 self-start md:self-center">0 Loaded</span>
+                    </div>
+
+                    <div class="overflow-x-auto border border-gray-100 rounded-xl bg-white">
+                        <table class="w-full text-left border-collapse min-w-[1300px]">
+                            <thead>
+                                <tr class="bg-gray-50/70 border-b border-gray-100 text-[10px] font-extrabold uppercase tracking-wider text-gray-400 sticky top-0 z-10 select-none">
+                                    <th class="p-4 w-12 text-center">
+                                        <input type="checkbox" id="masterTableCheckboxSelector" onchange="toggleSelectAllRows(this)" class="w-4 h-4 rounded text-[#FF5722] focus:ring-[#FF5722] border-gray-300 cursor-pointer">
+                                    </th>
+                                    <th class="p-4 w-52">Action Gateway Decision</th>
+                                    <th class="p-4">Vendor Entity / Ingested BDM</th>
+                                    <th class="p-4">Invoice ID & Document</th>
+                                    <th class="p-4">Raise Date (Ref)</th>
+                                    <th class="p-4">15D Payment Deadline</th>
+                                    <th class="p-4 text-right">Gross Amount</th>
+                                    <th class="p-4 text-center">Audit Badges</th>
+                                    <th class="p-4 text-center w-48">Administrative Control Suite</th>
+                                </tr>
+                            </thead>
+                            <tbody id="masterTableBody" class="divide-y divide-gray-100 text-xs text-gray-700">
+                                </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div id="viewSegmentAnalytics" class="hidden space-y-6 animate-fade-in">
+                <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-xs">
+                    <div class="mb-6">
+                        <h2 class="text-base font-extrabold text-gray-950 tracking-tight">System Performance Track Overviews</h2>
+                        <p class="text-xs text-gray-400 font-medium mt-0.5">Comprehensive tracking log mapping the total volume count of passed and paid invoices across chronological operational horizons</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        <div class="bg-gray-50 border border-gray-100 rounded-xl p-5 flex items-center justify-between">
+                            <div>
+                                <p class="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">Invoices Processed (This Week)</p>
+                                <p id="analyticsCountWeekly" class="text-2xl font-black text-gray-950 mt-1">0 Items</p>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-[9px] font-extrabold uppercase tracking-wider text-gray-400">Settled Volume</p>
+                                <p id="analyticsSumWeekly" class="text-base font-black text-[#FF5722] mt-0.5">₹0</p>
+                            </div>
+                        </div>
+
+                        <div class="bg-gray-50 border border-gray-100 rounded-xl p-5 flex items-center justify-between">
+                            <div>
+                                <p class="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">Invoices Processed (This Month)</p>
+                                <p id="analyticsCountMonthly" class="text-2xl font-black text-gray-950 mt-1">0 Items</p>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-[9px] font-extrabold uppercase tracking-wider text-gray-400">Settled Volume</p>
+                                <p id="analyticsSumMonthly" class="text-base font-black text-[#FF5722] mt-0.5">₹0</p>
+                            </div>
+                        </div>
+
+                        <div class="bg-gray-50 border border-gray-100 rounded-xl p-5 flex items-center justify-between">
+                            <div>
+                                <p class="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">Invoices Processed (This Year)</p>
+                                <p id="analyticsCountYearly" class="text-2xl font-black text-gray-950 mt-1">0 Items</p>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-[9px] font-extrabold uppercase tracking-wider text-gray-400">Settled Volume</p>
+                                <p id="analyticsSumYearly" class="text-base font-black text-[#FF5722] mt-0.5">₹0</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="border border-gray-100 rounded-xl p-6 bg-gray-50/50 max-w-4xl mx-auto">
+                        <p class="text-[10px] font-extrabold uppercase tracking-wider text-gray-400 mb-4 text-center">Macro Capital Pipeline Run Rates Comparison Grid</p>
+                        <div class="h-80 w-full">
+                            <canvas id="analyticsMetricsBarChartCanvas"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="rowOverrideModalWindow" class="hidden fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-md rounded-2xl border border-gray-200 shadow-2xl p-6 space-y-4 animate-scale-up">
+            <div>
+                <h3 class="text-sm font-extrabold text-gray-950 uppercase tracking-tight flex items-center gap-1.5">📝 Field Corrections Console</h3>
+                <p class="text-xs text-gray-400 mt-0.5 font-medium">Update database ledger text fields or metadata values</p>
+            </div>
+            <input type="hidden" id="overrideTargetRowIdField">
+            
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-[10px] font-extrabold uppercase tracking-wider text-gray-400 mb-1">Consultancy Name</label>
+                    <input id="overrideInputConsultancy" type="text" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-gray-900 transition">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-extrabold uppercase tracking-wider text-gray-400 mb-1">Gross Amount (INR)</label>
+                    <input id="overrideInputAmount" type="number" step="any" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-gray-900 transition">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-extrabold uppercase tracking-wider text-gray-400 mb-1">Invoice Meta Reference ID</label>
+                    <input id="overrideInputInvoiceNum" type="text" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-gray-900 transition">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-extrabold uppercase tracking-wider text-gray-400 mb-1">Darshan Directive Override / Revision Comment</label>
+                    <textarea id="overrideInputDarshanComment" placeholder="Write adjustment reasons if tracking exceptions or forcing structural workflow revisions..." class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs font-bold outline-none focus:border-gray-900 transition h-16 resize-none"></textarea>
+                </div>
+                
+                <div class="flex gap-2 pt-2">
+                    <button onclick="commitRowDataModificationOverride()" class="bg-[#FF5722] hover:bg-[#E64A19] text-white font-extrabold text-xs uppercase px-4 py-2.5 rounded-xl transition flex-1 cursor-pointer shadow-sm">Commit System Updates</button>
+                    <button onclick="closeOverrideModalWindow()" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs px-4 py-2.5 rounded-xl transition cursor-pointer">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="cinemaModalOverlay" class="hidden fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-2 sm:p-6" onclick="closeCinematicOverlayFrame()">
+        <div class="bg-white w-full h-full rounded-2xl flex flex-col shadow-2xl overflow-hidden transform scale-100 transition-all duration-150" onclick="event.stopPropagation();">
+            <div class="bg-gray-950 px-6 py-4 flex justify-between items-center text-white">
+                <div class="flex items-center space-x-3">
+                    <div class="bg-[#FF5722] text-white text-[10px] font-black px-2 py-0.5 rounded uppercase">ATTACHMENT SECURE VIEW</div>
+                    <h3 id="cinemaModalTitle" class="text-xs font-extrabold tracking-wider uppercase text-gray-200">Document Framework Stream</h3>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <div id="attachmentContextDarshanOptions" class="hidden flex items-center gap-1.5 bg-white/5 border border-white/10 px-3 py-1 rounded-xl">
+                        <button onclick="executeQuickDarshanStateOverrideFromAttachment('paid')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[9px] uppercase px-2.5 py-1 rounded transition cursor-pointer">Settle Paid</button>
+                        <button onclick="executeQuickDarshanStateOverrideFromAttachment('revision')" class="bg-purple-600 hover:bg-purple-700 text-white font-extrabold text-[9px] uppercase px-2.5 py-1 rounded transition cursor-pointer">Flag Revision</button>
+                    </div>
+                    <button onclick="closeCinematicOverlayFrame()" class="text-gray-400 hover:text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition cursor-pointer">✕ Dismiss Screen</button>
+                </div>
+            </div>
+            <div class="flex-1 bg-gray-900 p-1">
+                <iframe id="cinemaModalIframe" src="about:blank" class="w-full h-full border-0 rounded-xl bg-white shadow-inner"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const _supabase = supabase.createClient("https://clzvhhzdcgeplrtvgxlm.supabase.co", "sb_publishable_mrnt1SyK7QKLb4G2Mmkehg_DCdNx4IE");
+        
+        const GATEWAY_SECURITY_REGISTRY = {
+            "Vikas": "Vikas@1234",
+            "Rithik": "Rithik@1234",
+            "Arun": "Arun@1234",
+            "Darshan": "Darshan@1234",
+            "Central": "Central@1234"
+        };
+
+        let currentActiveSystemUserRole = null;
+        let lifecycleTabFilter = "pending_all"; 
+        let payoutTimeframeFilter = "all"; 
+        let explicitCalendarWednesdayValue = "";
+        let selectedRowIdsArrayBucket = [];
+        let globalCachedRecordsList = [];
+        let finalRuntimeRenderedRowsList = []; 
+        let renderChartInstanceRef = null;
+
+        // --- PASSWORD VISIBILITY TOGGLE TOOL ---
+        function togglePasswordVisibilityText() {
+            const inputField = document.getElementById('authInputPassword');
+            const toggleLabel = document.getElementById('passwordToggleText');
+            if (inputField.type === "password") {
+                inputField.type = "text";
+                toggleLabel.innerText = "Hide";
+            } else {
+                inputField.type = "password";
+                toggleLabel.innerText = "Show";
+            }
+        }
+
+        // --- AUTHENTICATION RECEPTION AND ROUTING SYSTEMS ---
+        function processSystemIdentityAuthentication() {
+            const selectedIdentityUser = document.getElementById('authSelectIdentity').value;
+            const inputtedPasswordValue = document.getElementById('authInputPassword').value;
+            const alertBannerNode = document.getElementById('authAlertBanner');
+
+            if (GATEWAY_SECURITY_REGISTRY[selectedIdentityUser] === inputtedPasswordValue) {
+                alertBannerNode.classList.add('hidden');
+                currentActiveSystemUserRole = selectedIdentityUser;
+                bootstrapUserInterfaceEnvironmentDesk();
+            } else {
+                alertBannerNode.innerText = "Security Authorization Interrupted: Invalid credential matching criteria.";
+                alertBannerNode.classList.remove('hidden');
+            }
+        }
+
+        function bootstrapUserInterfaceEnvironmentDesk() {
+            document.getElementById('portalAuthGatewayLockbox').classList.add('hidden');
+            document.getElementById('mainDashboardApplicationWrapper').classList.remove('hidden');
+
+            const headingTitleBox = document.getElementById('dashboardTitle');
+            const contextSubLabel = document.getElementById('headerSystemIdentitySubContext');
+
+            if (currentActiveSystemUserRole === "Central") {
+                headingTitleBox.innerText = "Zolve Central Partner Team Matrix Ledger";
+                contextSubLabel.innerText = "Master System Access Mode • Full Operations Audit Jurisdiction";
+            } else {
+                headingTitleBox.innerText = `${currentActiveSystemUserRole}'s Operations Processing Dashboard`;
+                contextSubLabel.innerText = `${currentActiveSystemUserRole} Account Profile Node • Active Identity Guard Isolation`;
+            }
+
+            document.getElementById('darshanHeaderActions').classList.toggle('hidden', currentActiveSystemUserRole !== "Darshan");
+
+            selectedRowIdsArrayBucket = [];
+            document.getElementById('masterTableCheckboxSelector').checked = false;
+            updateBulkActionsVisibilityStateConsole();
+
+            fetchAndRenderInvoices();
+        }
+
+        function executeSecureIdentitySessionLogout() {
+            currentActiveSystemUserRole = null;
+            document.getElementById('authInputPassword').value = "";
+            document.getElementById('mainDashboardApplicationWrapper').classList.add('hidden');
+            document.getElementById('portalAuthGatewayLockbox').classList.remove('hidden');
+        }
+
+        function toggleViewSegment(segmentKeyword) {
+            document.getElementById('viewSegmentTable').classList.toggle('hidden', segmentKeyword !== 'table');
+            document.getElementById('viewSegmentAnalytics').classList.toggle('hidden', segmentKeyword !== 'analytics');
+            
+            const activeStyle = "bg-white text-gray-950 font-bold shadow-2xs border border-gray-200/40";
+            const inactiveStyle = "text-gray-500 hover:text-gray-900 font-bold";
+            
+            document.getElementById('viewBtnTable').className = `${segmentKeyword === 'table' ? activeStyle : inactiveStyle} px-3 py-1.5 rounded-lg transition cursor-pointer`;
+            document.getElementById('viewBtnAnalytics').className = `${segmentKeyword === 'analytics' ? activeStyle : inactiveStyle} px-3 py-1.5 rounded-lg transition cursor-pointer`;
+            
+            document.querySelectorAll('.data-table-control').forEach(node => node.classList.toggle('hidden', segmentKeyword !== 'table'));
+        }
+
+        function switchLifecycleTab(tab) {
+            lifecycleTabFilter = tab;
+            const activeStyle = "bg-white text-gray-950 font-bold shadow-2xs border border-gray-200/40";
+            const inactiveStyle = "text-gray-500 hover:text-gray-900 font-bold";
+            
+            document.getElementById('tabPending').className = `${tab === 'pending_all' ? activeStyle : inactiveStyle} px-3 py-1.5 rounded-lg transition cursor-pointer`;
+            document.getElementById('tabPaid').className = `${tab === 'paid' ? activeStyle : inactiveStyle} px-3 py-1.5 rounded-lg transition cursor-pointer`;
+            
+            fetchAndRenderInvoices();
+        }
+
+        function switchPayoutTimeframe(timeframe) {
+            payoutTimeframeFilter = timeframe;
+            document.getElementById('wednesdayBatchCalendar').value = ""; 
+            explicitCalendarWednesdayValue = "";
+
+            const activeStyle = "bg-white text-gray-950 font-bold shadow-2xs border border-gray-200/40";
+            const inactiveStyle = "text-gray-500 hover:text-gray-900 font-bold";
+
+            document.getElementById('btnBatchAll').className = `${timeframe === 'all' ? activeStyle : inactiveStyle} px-3 py-1.5 rounded-lg transition cursor-pointer`;
+            document.getElementById('btnBatchThis').className = `${timeframe === 'this_week' ? activeStyle : inactiveStyle} px-3 py-1.5 rounded-lg transition cursor-pointer`;
+            document.getElementById('btnBatchNext').className = `${timeframe === 'next_week' ? activeStyle : inactiveStyle} px-3 py-1.5 rounded-lg transition cursor-pointer`;
+            document.getElementById('btnBatchThird').className = `${timeframe === 'third_week' ? activeStyle : inactiveStyle} px-3 py-1.5 rounded-lg transition cursor-pointer`;
+
+            fetchAndRenderInvoices();
+        }
+
+        function applyCustomCalendarTargetDate() {
+            explicitCalendarWednesdayValue = document.getElementById('wednesdayBatchCalendar').value;
+            payoutTimeframeFilter = "custom";
+            
+            const inactiveStyle = "text-gray-500 hover:text-gray-900 font-bold";
+            document.getElementById('btnBatchAll').className = `${inactiveStyle} px-3 py-1.5 rounded-lg transition cursor-pointer`;
+            document.getElementById('btnBatchThis').className = `${inactiveStyle} px-3 py-1.5 rounded-lg transition cursor-pointer`;
+            document.getElementById('btnBatchNext').className = `${inactiveStyle} px-3 py-1.5 rounded-lg transition cursor-pointer`;
+            document.getElementById('btnBatchThird').className = `${inactiveStyle} px-3 py-1.5 rounded-lg transition cursor-pointer`;
+
+            fetchAndRenderInvoices();
+        }
+
+        // --- CALENDAR TIME CONTEXT PARSER MAP FOR TRADITIONAL CALENDAR WEEKS BOUND TO RAISE DATE ---
+        function checkRaiseDateMatchesTimeframeFilter(raiseDateObj, filterKeyword, rawCustomVal) {
+            const dateTimestamp = new Date(raiseDateObj.setHours(0,0,0,0)).getTime();
+            
+            const today = new Date();
+            const currentDayOfWeek = today.getDay(); // 0 is Sunday, 1 is Monday...
+            
+            // Generate Start Anchor of current week (Monday)
+            const distanceToMonday = currentDayOfWeek === 0 ? -6 : 1 - currentDayOfWeek;
+            const startOfThisWeek = new Date(today);
+            startOfThisWeek.setDate(today.getDate() + distanceToMonday);
+            startOfThisWeek.setHours(0,0,0,0);
+            
+            const oneWeekInMs = 7 * 24 * 60 * 60 * 1000;
+            const startOfThisWeekUnix = startOfThisWeek.getTime();
+
+            if (filterKeyword === 'all') {
+                return true;
+            }
+            if (filterKeyword === 'this_week') {
+                const endOfThisWeekUnix = startOfThisWeekUnix + oneWeekInMs - 1;
+                return (dateTimestamp >= startOfThisWeekUnix && dateTimestamp <= endOfThisWeekUnix);
+            }
+            if (filterKeyword === 'next_week') {
+                const startOfNextWeekUnix = startOfThisWeekUnix + oneWeekInMs;
+                const endOfNextWeekUnix = startOfNextWeekUnix + oneWeekInMs - 1;
+                return (dateTimestamp >= startOfNextWeekUnix && dateTimestamp <= endOfNextWeekUnix);
+            }
+            if (filterKeyword === 'third_week') {
+                const startOfThirdWeekUnix = startOfThisWeekUnix + (2 * oneWeekInMs);
+                const endOfThirdWeekUnix = startOfThirdWeekUnix + oneWeekInMs - 1;
+                return (dateTimestamp >= startOfThirdWeekUnix && dateTimestamp <= endOfThirdWeekUnix);
+            }
+            if (filterKeyword === 'custom' && rawCustomVal) {
+                const targetCustomUnix = new Date(rawCustomVal).setHours(0,0,0,0);
+                return dateTimestamp === targetCustomUnix;
+            }
+            return true;
+        }
+
+        // --- EXCEL SHEET DATA EXTRACTION PARSING CONSOLE ---
+        function exportFilteredInvoicesToExcel() {
+            if (finalRuntimeRenderedRowsList.length === 0) {
+                alert("The current filtered views don't capture any active ledger data rows to extract.");
+                return;
+            }
+
+            const arrayDataForExcelWorkbook = finalRuntimeRenderedRowsList.map((rowItem, index) => {
+                return {
+                    "Index": index + 1,
+                    "Consultancy Vendor": rowItem.consultancy_name || "N/A",
+                    "Assigned BDM Personnel": rowItem.bdm_name || "N/A",
+                    "Invoice Metadata ID": rowItem.invoice_number || "N/A",
+                    "Gross Amount (INR)": rowItem.amount || 0,
+                    "Ingestion System Created Date": new Date(rowItem.created_at).toLocaleDateString('en-IN'),
+                    "Vikas Verification Status": rowItem.vikas_status || "pending",
+                    "Rithik Verification Status": rowItem.rithik_status || "pending",
+                    "Arun Verification Status": rowItem.arun_status || "pending",
+                    "Final Status Lifecycle Step": rowItem.final_status || "pending",
+                    "Original File Link Ref": rowItem.file_url || ""
+                };
+            });
+
+            const activeWorksheet = XLSX.utils.json_to_sheet(arrayDataForExcelWorkbook);
+            const activeWorkbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(activeWorkbook, activeWorksheet, "Zolve Invoices Ledger");
+
+            const dateFileStampString = new Date().toISOString().split('T')[0];
+            XLSX.writeFile(activeWorkbook, `Zolve_EL_Invoices_Export_${payoutTimeframeFilter}_${dateFileStampString}.xlsx`);
+        }
+
+        // --- ROW ENTRY MULTI-SELECT ENGINE SYSTEMS ---
+        function toggleSelectAllRows(masterCheckboxNode) {
+            const activeCheckboxElementsList = document.querySelectorAll('.row-record-matrix-checkbox');
+            selectedRowIdsArrayBucket = [];
+            
+            activeCheckboxElementsList.forEach(checkbox => {
+                checkbox.checked = masterCheckboxNode.checked;
+                if (checkbox.checked) {
+                    selectedRowIdsArrayBucket.push(parseInt(checkbox.getAttribute('data-row-id')));
+                }
+            });
+            updateBulkActionsVisibilityStateConsole();
+        }
+
+        function toggleIndividualRowSelectionState(rowId, checkboxNodeEventRef) {
+            if (checkboxNodeEventRef.checked) {
+                if (!selectedRowIdsArrayBucket.includes(rowId)) selectedRowIdsArrayBucket.push(rowId);
+            } else {
+                selectedRowIdsArrayBucket = selectedRowIdsArrayBucket.filter(id => id !== rowId);
+                document.getElementById('masterTableCheckboxSelector').checked = false;
+            }
+            updateBulkActionsVisibilityStateConsole();
+        }
+
+        function updateBulkActionsVisibilityStateConsole() {
+            const actionsConsolePanel = document.getElementById('bulkActionsConsole');
+            const countLabelTextNode = document.getElementById('bulkCountBadge');
+            
+            if (selectedRowIdsArrayBucket.length > 0 && !["Central", "Darshan"].includes(currentActiveSystemUserRole)) {
+                countLabelTextNode.innerText = `${selectedRowIdsArrayBucket.length} Invoices Highlighted`;
+                actionsConsolePanel.classList.remove('hidden');
+            } else {
+                actionsConsolePanel.classList.add('hidden');
+            }
+        }
+
+        async function executeBulkOperation(approvalDecisionKeyword) {
+            if (selectedRowIdsArrayBucket.length === 0) return;
+            if (!confirm(`Deploy batch ${approvalDecisionKeyword.toUpperCase()} execution parameters across ${selectedRowIdsArrayBucket.length} highlighted rows?`)) return;
+
+            let updatesDictionaryPayload = {};
+            updatesDictionaryPayload[`${currentActiveSystemUserRole.toLowerCase()}_status`] = approvalDecisionKeyword;
+
+            for (let targetId of selectedRowIdsArrayBucket) {
+                await _supabase.from('invoices').update(updatesDictionaryPayload).eq('id', targetId);
+                await verifyCascadingApprovalGateRules(targetId);
+            }
+
+            selectedRowIdsArrayBucket = [];
+            document.getElementById('masterTableCheckboxSelector').checked = false;
+            updateBulkActionsVisibilityStateConsole();
+            fetchAndRenderInvoices();
+        }
+
+        async function executeDarshanBulkAction(actionTypeKeyword) {
+            if (selectedRowIdsArrayBucket.length === 0) {
+                alert("Please highlight/check at least one invoice row from the table list checkboxes first.");
+                return;
+            }
+
+            if (actionTypeKeyword === 'paid') {
+                if (!confirm(`Confirm payout disbursal processing routines for all ${selectedRowIdsArrayBucket.length} selected invoices?`)) return;
+                for (let targetId of selectedRowIdsArrayBucket) {
+                    await _supabase.from('invoices').update({ final_status: 'paid' }).eq('id', targetId);
+                }
+            } 
+            else if (actionTypeKeyword === 'revision') {
+                const revisionDirectiveNote = prompt(`Enter modifications directive comment requirements for all ${selectedRowIdsArrayBucket.length} checked rows:`);
+                if (!revisionDirectiveNote || revisionDirectiveNote.trim() === "") {
+                    alert("A change suggestion comment description is required to route exception statuses.");
+                    return;
+                }
+                for (let targetId of selectedRowIdsArrayBucket) {
+                    await _supabase.from('invoices').update({
+                        final_status: 'pending', vikas_status: 'pending', rithik_status: 'pending', arun_status: 'pending',
+                        invoice_number: `REVISION_REQUIRED: ${revisionDirectiveNote.trim()}`
+                    }).eq('id', targetId);
+                }
+            }
+
+            selectedRowIdsArrayBucket = [];
+            document.getElementById('masterTableCheckboxSelector').checked = false;
+            fetchAndRenderInvoices();
+        }
+
+        async function processSingleInvoiceGateAction(id, decisionKeyword) {
+            let updatesDictionaryPayload = {};
+            updatesDictionaryPayload[`${currentActiveSystemUserRole.toLowerCase()}_status`] = decisionKeyword;
+
+            await _supabase.from('invoices').update(updatesDictionaryPayload).eq('id', id);
+            await verifyCascadingApprovalGateRules(id);
+            fetchAndRenderInvoices();
+        }
+
+        // --- ARUN DEDICATED MASTER APPROVAL CASCADING ENGINE (NEW REQUIREMENT) ---
+        async function executeArunMasterCascadeApprovalOverride(id) {
+            if (currentActiveSystemUserRole !== "Arun") return;
+            if (!confirm("Force Master Cascading Approval for this invoice? This updates Vikas, Rithik, and Arun gates simultaneously to clear backlogs.")) return;
+
+            const arunOverridePayload = {
+                vikas_status: 'approved',
+                rithik_status: 'approved',
+                arun_status: 'approved',
+                final_status: 'fully_approved'
+            };
+
+            await _supabase.from('invoices').update(arunOverridePayload).eq('id', id);
+            fetchAndRenderInvoices();
+        }
+
+        async function verifyCascadingApprovalGateRules(id) {
+            const { data: record } = await _supabase.from('invoices').select('*').eq('id', id).single();
+            if (record && record.vikas_status === 'approved' && record.rithik_status === 'approved' && record.arun_status === 'approved' && record.final_status === 'pending') {
+                await _supabase.from('invoices').update({ final_status: 'fully_approved' }).eq('id', id);
+            }
+        }
+
+        // --- TRANSACTIONS RECORD HARD DELETION ENGINE CORE WORKING ROUTINE ---
+        async function executeAdministrativeRecordPurge(id) {
+            if (!["Arun", "Central"].includes(currentActiveSystemUserRole)) {
+                alert("Security Exception: System controls restrict hard-purges to Arun or the Central Partner Team.");
+                return;
+            }
+
+            if (confirm("⚠️ CRITICAL ACTION: Permanently purge this row entity from the database? This action cannot be reversed.")) {
+                const { error } = await _supabase.from('invoices').delete().eq('id', id);
+                if (error) {
+                    alert(`Purge execution blocked: ${error.message}`);
+                } else {
+                    // Force complete localized refresh loops to clean view index
+                    selectedRowIdsArrayBucket = selectedRowIdsArrayBucket.filter(bId => bId !== id);
+                    fetchAndRenderInvoices();
+                }
+            }
+        }
+
+        // --- MANAGERS RE-RUN DATA CORRECTIONS MODAL (UPLOAD FIELDS REMOVED) ---
+        function launchRowFieldOverrideConsoleModal(rowId) {
+            const targetedObjectNode = globalCachedRecordsList.find(item => item.id === rowId);
+            if (!targetedObjectNode) return;
+
+            let cleanInvoiceNumString = targetedObjectNode.invoice_number || "";
+            let extractedDarshanDirectiveText = "";
+            if (cleanInvoiceNumString.startsWith("REVISION_REQUIRED:")) {
+                extractedDarshanDirectiveText = cleanInvoiceNumString.replace("REVISION_REQUIRED:", "").trim();
+                cleanInvoiceNumString = "REVISION RE-ENTRY REQUIRED";
+            }
+
+            document.getElementById('overrideTargetRowIdField').value = rowId;
+            document.getElementById('overrideInputConsultancy').value = targetedObjectNode.consultancy_name || "";
+            document.getElementById('overrideInputAmount').value = targetedObjectNode.amount || 0;
+            document.getElementById('overrideInputInvoiceNum').value = cleanInvoiceNumString;
+            document.getElementById('overrideInputDarshanComment').value = extractedDarshanDirectiveText;
+
+            document.getElementById('rowOverrideModalWindow').classList.remove('hidden');
+        }
+
+        function closeOverrideModalWindow() {
+            document.getElementById('rowOverrideModalWindow').classList.add('hidden');
+        }
+
+        async function commitRowDataModificationOverride() {
+            const targetId = parseInt(document.getElementById('overrideTargetRowIdField').value);
+            const inputComment = document.getElementById('overrideInputDarshanComment').value.trim();
+            let finalInvoiceNumValue = document.getElementById('overrideInputInvoiceNum').value.trim();
+
+            if (inputComment !== "") {
+                finalInvoiceNumValue = `REVISION_REQUIRED: ${inputComment}`;
+            }
+
+            const overridePayload = {
+                consultancy_name: document.getElementById('overrideInputConsultancy').value.trim(),
+                amount: parseFloat(document.getElementById('overrideInputAmount').value),
+                invoice_number: finalInvoiceNumValue,
+                ...(inputComment !== "" && {
+                    final_status: 'pending', vikas_status: 'pending', rithik_status: 'pending', arun_status: 'pending'
+                })
+            };
+
+            await _supabase.from('invoices').update(overridePayload).eq('id', targetId);
+            closeOverrideModalWindow();
+            fetchAndRenderInvoices();
+        }
+
+        // --- EMAIL-STYLE HIGH-CAPACITY FULL WINDOW PREVIEW CONTROLS ---
+        function openCinematicOverlayFrame(rowId, title, url) {
+            document.getElementById('cinemaModalTitle').innerText = `Email Attachment Sandbox Frame: ${title}`;
+            document.getElementById('cinemaModalIframe').src = url;
+            
+            const darshanPanel = document.getElementById('attachmentContextDarshanOptions');
+            if (currentActiveSystemUserRole === "Darshan") {
+                darshanPanel.classList.remove('hidden');
+                darshanPanel.setAttribute('data-active-context-id', rowId);
+            } else {
+                darshanPanel.classList.add('hidden');
+            }
+
+            document.getElementById('cinemaModalOverlay').classList.remove('hidden');
+        }
+
+        function closeCinematicOverlayFrame() {
+            document.getElementById('cinemaModalOverlay').classList.add('hidden');
+            document.getElementById('cinemaModalIframe').src = "about:blank";
+        }
+
+        async function executeQuickDarshanStateOverrideFromAttachment(actionKeyword) {
+            const overlayTargetPanel = document.getElementById('attachmentContextDarshanOptions');
+            const targetRowId = parseInt(overlayTargetPanel.getAttribute('data-active-context-id'));
+            if (!targetRowId) return;
+
+            if (actionKeyword === 'paid') {
+                if (confirm("Settle liability metrics line?")) {
+                    await _supabase.from('invoices').update({ final_status: 'paid' }).eq('id', targetRowId);
+                }
+            } else if (actionKeyword === 'revision') {
+                const note = prompt("Enter modifications directive comment requirements feedback:");
+                if (note && note.trim() !== "") {
+                    await _supabase.from('invoices').update({
+                        final_status: 'pending', vikas_status: 'pending', rithik_status: 'pending', arun_status: 'pending',
+                        invoice_number: `REVISION_REQUIRED: ${note.trim()}`
+                    }).eq('id', targetRowId);
+                }
+            }
+            closeCinematicOverlayFrame();
+            fetchAndRenderInvoices();
+        }
+
+        // --- CORE RENDER DATA MANAGEMENT AND CALCULATION SYSTEMS PIPELINES ---
+        async function fetchAndRenderInvoices() {
+            if (!currentActiveSystemUserRole) return; 
+            
+            const tBody = document.getElementById('masterTableBody');
+            const { data: records, error } = await _supabase.from('invoices').select('*').order('created_at', { ascending: false });
+            
+            if (error || !records) { 
+                tBody.innerHTML = `<tr><td colspan="9" class="p-8 text-center font-bold text-red-500">Pipeline Fetch Blocked: ${error?.message}</td></tr>`; 
+                return; 
+            }
+
+            globalCachedRecordsList = records; 
+            finalRuntimeRenderedRowsList = []; 
+            tBody.innerHTML = "";
+            
+            let visibleRowsCount = 0;
+            let sumUnpaidLiability = 0;
+            let sumPaidSettledCapital = 0;
+            let countMaturityOverdueItems = 0;
+
+            let metricsChronologyCollectionBucket = {
+                weekly: { count: 0, sum: 0 },
+                monthly: { count: 0, sum: 0 },
+                yearly: { count: 0, sum: 0 }
+            };
+
+            const nowTimestampUnixMs = new Date().getTime();
+
+            records.forEach(item => {
+                const amountValue = item.amount || 0;
+                const creationDateObj = new Date(item.created_at);
+                const creationTimestampUnix = creationDateObj.getTime();
+
+                if (item.final_status === 'paid') {
+                    sumPaidSettledCapital += amountValue;
+                } else {
+                    sumUnpaidLiability += amountValue;
+                }
+
+                const distanceInMsWeeklyWindow = 7 * 24 * 60 * 60 * 1000;
+                const distanceInMsMonthlyWindow = 30 * 24 * 60 * 60 * 1000;
+                const distanceInMsYearlyWindow = 365 * 24 * 60 * 60 * 1000;
+
+                if ((nowTimestampUnixMs - creationTimestampUnix) <= distanceInMsWeeklyWindow) {
+                    metricsChronologyCollectionBucket.weekly.count++;
+                    metricsChronologyCollectionBucket.weekly.sum += amountValue;
+                }
+                if ((nowTimestampUnixMs - creationTimestampUnix) <= distanceInMsMonthlyWindow) {
+                    metricsChronologyCollectionBucket.monthly.count++;
+                    metricsChronologyCollectionBucket.monthly.sum += amountValue;
+                }
+                if ((nowTimestampUnixMs - creationTimestampUnix) <= distanceInMsYearlyWindow) {
+                    metricsChronologyCollectionBucket.yearly.count++;
+                    metricsChronologyCollectionBucket.yearly.sum += amountValue;
+                }
+
+                // --- EXTRACT CHRONOLOGICAL RAISE DATE METADATA ---
+                let extractedRaiseDate = new Date(item.created_at);
+                let cleanInvoiceIdString = item.invoice_number || 'N/A';
+                
+                const bracketScannerPattern = /\(([^)]+)\)/;
+                const parsedMatchArray = bracketScannerPattern.exec(item.invoice_number);
+                if (parsedMatchArray && parsedMatchArray[1]) {
+                    const parsedCandidateDate = new Date(parsedMatchArray[1]);
+                    if (!isNaN(parsedCandidateDate.getTime())) {
+                        extractedRaiseDate = parsedCandidateDate;
+                        cleanInvoiceIdString = item.invoice_number.replace(bracketScannerPattern, '').trim();
+                    }
+                }
+
+                const finalPaymentDeadlineDateObj = new Date(extractedRaiseDate);
+                finalPaymentDeadlineDateObj.setDate(extractedRaiseDate.getDate() + 15);
+                
+                const isOverdueAndDelinquent = (nowTimestampUnixMs > finalPaymentDeadlineDateObj.getTime()) && (item.final_status !== 'paid');
+                if (isOverdueAndDelinquent) countMaturityOverdueItems++;
+
+                if (lifecycleTabFilter === 'paid' && item.final_status !== 'paid') return;
+                if (lifecycleTabFilter === 'pending_all' && item.final_status === 'paid') return;
+
+                // Fire direct chronological evaluation check using raise date criteria
+                if (!checkRaiseDateMatchesTimeframeFilter(new Date(extractedRaiseDate), payoutTimeframeFilter, explicitCalendarWednesdayValue)) return;
+
+                // --- IDENTITY ACCESS Scope BOUNDARY ISOLATION GATES ---
+                let allowRowVisibilityRender = false;
+                if (currentActiveSystemUserRole === "Central") allowRowVisibilityRender = true; 
+                else if (currentActiveSystemUserRole === "Darshan" && (item.final_status === "fully_approved" || item.final_status === "paid")) allowRowVisibilityRender = true;
+                else if (["Vikas", "Rithik", "Arun"].includes(currentActiveSystemUserRole)) allowRowVisibilityRender = true;
+
+                if (allowRowVisibilityRender) {
+                    visibleRowsCount++;
+                    finalRuntimeRenderedRowsList.push(item);
+
+                    const isCheckboxSelectedChecked = selectedRowIdsArrayBucket.includes(item.id);
+                    const labelBadge = (statusKey) => `<span class="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wide border status-${statusKey}">${statusKey}</span>`;
+
+                    let administrativeControlsMarkup = "";
+                    if (currentActiveSystemUserRole === "Central") {
+                        administrativeControlsMarkup = labelBadge(item.final_status);
+                    } else if (currentActiveSystemUserRole === "Darshan") {
+                        administrativeControlsMarkup = item.final_status === "paid" ? labelBadge('paid') : labelBadge('fully_approved');
+                    } else {
+                        const personnelStatusKey = item[`${currentActiveSystemUserRole.toLowerCase()}_status`];
+                        let isGateLockedByPriorSteps = false;
+                        let gateLockLabelReason = "";
+
+                        if (currentActiveSystemUserRole === "Rithik" && item.vikas_status === "pending") { isGateLockedByPriorSteps = true; gateLockLabelReason = "Awaiting Vikas"; }
+                        if (currentActiveSystemUserRole === "Arun" && (item.vikas_status === "pending" || item.rithik_status === "pending")) { isGateLockedByPriorSteps = true; gateLockLabelReason = "Awaiting T1/T2"; }
+
+                        if (personnelStatusKey !== "pending") {
+                            administrativeControlsMarkup = `Decision: ${labelBadge(personnelStatusKey)}`;
+                        } else if (isGateLockedByPriorSteps) {
+                            administrativeControlsMarkup = `<span class="text-[9px] font-bold text-gray-400 bg-gray-50 border border-gray-100 px-2 py-1 rounded select-none cursor-not-allowed">🔒 ${gateLockLabelReason}</span>`;
+                        } else {
+                            administrativeControlsMarkup = `
+                                <div class="flex gap-1" onclick="event.stopPropagation();">
+                                    <button onclick="processSingleInvoiceGateAction(${item.id}, 'approved')" class="bg-gray-950 text-white font-extrabold text-[9px] uppercase px-2.5 py-1.5 rounded-lg hover:bg-gray-800 transition cursor-pointer shadow-2xs">Approve</button>
+                                    <button onclick="processSingleInvoiceGateAction(${item.id}, 'rejected')" class="bg-red-50 text-red-600 font-extrabold text-[9px] uppercase px-2.5 py-1.5 rounded-lg hover:bg-red-100 transition cursor-pointer shadow-2xs">Reject</button>
+                                </div>`;
+                        }
+                    }
+
+                    let modificationWarningBannerMarkup = "";
+                    if (cleanInvoiceIdString.startsWith("REVISION_REQUIRED:")) {
+                        modificationWarningBannerMarkup = `<div class="text-[9px] text-purple-800 bg-purple-50 p-2 rounded-lg mt-1 font-bold border border-purple-100 select-text whitespace-normal">Directive: "${cleanInvoiceIdString.replace("REVISION_REQUIRED:", "").trim()}"</div>`;
+                        cleanInvoiceIdString = "⚠️ REVISION ACTION REQUIRED";
+                    }
+
+                    // Compile dynamic actions row controls mapping operator scopes
+                    let arunForceApprovalButtonMarkup = "";
+                    if (currentActiveSystemUserRole === "Arun" && item.final_status === "pending") {
+                        arunForceApprovalButtonMarkup = `<button onclick="executeArunMasterCascadeApprovalOverride(${item.id})" class="bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 font-extrabold text-[10px] tracking-wide uppercase px-2 py-1.5 rounded-lg transition cursor-pointer shadow-2xs">🌟 Override Force Approve</button>`;
+                    }
+
+                    let deleteButtonMarkup = "";
+                    if (["Arun", "Central"].includes(currentActiveSystemUserRole)) {
+                        deleteButtonMarkup = `<button onclick="executeAdministrativeRecordPurge(${item.id})" class="bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-extrabold text-[10px] tracking-wide uppercase px-2 py-1.5 rounded-lg transition cursor-pointer shadow-2xs">Delete</button>`;
+                    }
+
+                    // Beautified audit trailing badges array strings
+                    const logBadge = (val) => val === 'approved' ? '<span class="text-emerald-600 font-black">✓</span>' : (val === 'rejected' ? '<span class="text-red-500 font-black">✕</span>' : '<span class="text-gray-300">•</span>');
+                    const compactAuditTrailLogsMarkup = `
+                        <div class="flex items-center justify-center gap-1.5 bg-gray-50 border border-gray-100 px-2 py-1 rounded-md text-[10px] font-bold text-gray-500 select-none">
+                            <span>V:${logBadge(item.vikas_status)}</span>
+                            <span class="text-gray-200">|</span>
+                            <span>R:${logBadge(item.rithik_status)}</span>
+                            <span class="text-gray-200">|</span>
+                            <span>A:${logBadge(item.arun_status)}</span>
+                        </div>
+                    `;
+
+                    tBody.innerHTML += `
+                        <tr class="transition duration-100 border-b border-gray-100 font-medium hover:bg-gray-50/40">
+                            <td class="p-4 text-center" onclick="event.stopPropagation();">
+                                <input type="checkbox" data-row-id="${item.id}" ${isCheckboxSelectedChecked ? 'checked' : ''} 
+                                    onchange="toggleIndividualRowSelectionState(${item.id}, this)" 
+                                    class="row-record-matrix-checkbox w-4 h-4 rounded text-[#FF5722] focus:ring-[#FF5722] border-gray-300 cursor-pointer">
+                            </td>
+                            <td class="p-4">${administrativeControlsMarkup}</td>
+                            <td class="p-4">
+                                <div class="font-extrabold text-gray-900 text-sm tracking-tight">${item.consultancy_name}</div>
+                                <div class="text-gray-400 font-bold text-[10px] uppercase tracking-wide mt-0.5">BDM Personnel: ${item.bdm_name}</div>
+                                ${modificationWarningBannerMarkup}
+                            </td>
+                            <td class="p-4">
+                                <button onclick="openCinematicOverlayFrame(${item.id}, '${item.consultancy_name}', '${item.file_url}')" 
+                                    class="text-left font-mono font-extrabold text-gray-900 hover:text-[#FF5722] hover:underline bg-gray-50 hover:bg-orange-50 border border-gray-200 px-2.5 py-1 rounded text-[10px] cursor-pointer flex items-center space-x-1">
+                                    <span>📄 ${cleanInvoiceIdString}</span>
+                                </button>
+                            </td>
+                            <td class="p-4 text-gray-500 font-bold tracking-tight">
+                                ${extractedRaiseDate.toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'})}
+                            </td>
+                            <td class="p-4 tracking-tight">
+                                <div class="${isOverdueAndDelinquent ? 'text-[#FF5722] font-black' : 'text-gray-600 font-bold'}">
+                                    ${finalPaymentDeadlineDateObj.toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'})}
+                                </div>
+                                <div class="text-[9px] font-extrabold uppercase mt-0.5 tracking-wider ${isOverdueAndDelinquent ? 'text-[#FF5722]' : 'text-gray-400'}">
+                                    ${isOverdueAndDelinquent ? '⚠️ OVERDUE EXPIRED' : '⏳ Term Active'}
+                                </div>
+                            </td>
+                            <td class="p-4 font-extrabold text-gray-950 text-right text-sm tracking-tight">
+                                ₹${amountValue.toLocaleString('en-IN')}
+                            </td>
+                            <td class="p-4 text-center">${compactAuditTrailLogsMarkup}<div class="mt-1">${labelBadge(item.final_status)}</div></td>
+                            <td class="p-4 text-center">
+                                <div class="flex items-center justify-center gap-1.5" onclick="event.stopPropagation();">
+                                    <button onclick="launchRowFieldOverrideConsoleModal(${item.id})" class="bg-gray-100 hover:bg-gray-200 border border-gray-200 text-gray-700 font-extrabold text-[10px] tracking-wide uppercase px-2.5 py-1.5 rounded-lg transition cursor-pointer shadow-2xs">Edit</button>
+                                    ${arunForceApprovalButtonMarkup}
+                                    ${deleteButtonMarkup}
+                                </div>
+                            </td>
+                        </tr>`;
+                }
+            });
+
+            document.getElementById('statUnpaidVolume').innerText = `₹${sumUnpaidLiability.toLocaleString('en-IN')}`;
+            document.getElementById('statOverdueCount').innerText = `${countMaturityOverdueItems} Flagged Invoices`;
+            document.getElementById('statPaidVolume').innerText = `₹${sumPaidSettledCapital.toLocaleString('en-IN')}`;
+            document.getElementById('counterBadge').innerText = `${visibleRowsCount} Entries Displayed`;
+
+            document.getElementById('analyticsCountWeekly').innerText = `${metricsChronologyCollectionBucket.weekly.count} Invoices`;
+            document.getElementById('analyticsSumWeekly').innerText = `₹${metricsChronologyCollectionBucket.weekly.sum.toLocaleString('en-IN')}`;
+            
+            document.getElementById('analyticsCountMonthly').innerText = `${metricsChronologyCollectionBucket.monthly.count} Invoices`;
+            document.getElementById('analyticsSumMonthly').innerText = `₹${metricsChronologyCollectionBucket.monthly.sum.toLocaleString('en-IN')}`;
+            
+            document.getElementById('analyticsCountYearly').innerText = `${metricsChronologyCollectionBucket.yearly.count} Invoices`;
+            document.getElementById('analyticsSumYearly').innerText = `₹${metricsChronologyCollectionBucket.yearly.sum.toLocaleString('en-IN')}`;
+
+            initializePerformanceBarChartAssetInfographic(metricsChronologyCollectionBucket);
+
+            if (visibleRowsCount === 0) {
+                tBody.innerHTML = `<tr><td colspan="9" class="py-24 text-center text-gray-400 font-extrabold uppercase tracking-widest text-xs"><span class="text-3xl block mb-2">🎯</span> No transactional ledger records match selection criteria filters.</td></tr>`;
+            }
+        }
+
+        function initializePerformanceBarChartAssetInfographic(metricsInputCollection) {
+            const canvasContext = document.getElementById('analyticsMetricsBarChartCanvas').getContext('2d');
+            if (renderChartInstanceRef !== null) renderChartInstanceRef.destroy();
+
+            renderChartInstanceRef = new Chart(canvasContext, {
+                type: 'bar',
+                data: {
+                    labels: ['WEEKLY RUN RATE', 'MONTHLY VOLUME', 'YEARLY CUMULATIVE'],
+                    datasets: [
+                        {
+                            label: 'Total System Capital Volume (INR)',
+                            data: [metricsInputCollection.weekly.sum, metricsInputCollection.monthly.sum, metricsInputCollection.yearly.sum],
+                            backgroundColor: ['#111827', '#FF5722', '#2563EB'],
+                            borderRadius: 8,
+                            borderSkipped: false,
+                            barThickness: 36
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(contextItem) { return ` ₹${contextItem.raw.toLocaleString('en-IN')}`; }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) { return '₹' + value.toLocaleString('en-IN'); },
+                                font: { weight: '600', size: 10 }
+                            },
+                            grid: { color: '#F3F4F6' }
+                        },
+                        x: {
+                            ticks: { font: { weight: '700', size: 10 } },
+                            grid: { display: false }
+                        }
+                    }
+                }
+            });
+        }
+
+        _supabase.channel('invoice-ledger-websocket').on('postgres_changes', { event: '*', schema: 'public', table: 'invoices' }, () => fetchAndRenderInvoices()).subscribe();
+    </script>
+</body>
+</html>
